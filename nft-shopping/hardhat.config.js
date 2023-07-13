@@ -7,7 +7,12 @@ zksolc: {
     compilerSource: "binary",
     defaultNetwork : "sepolia",
     networks: {
-    hardhat: {},
+    hardhat: {
+
+        forking:{
+            url: 
+        }
+    },
     sepolia : {
         url : "https://rpc.sepolia.dev",
         accounts : [`0x${process.env.PRIVATE_KEY}`],
