@@ -7,6 +7,14 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract ArtPlatform is Ownable, ERC721 {
+    enum UserType{ VERIFIER , BUYER ,SUPPLIER  }
+    
+    struct User {
+        string name; //name
+        string profile_pic_url; //image of the user profile 
+        UserType _type;
+    }
+    
     struct Artwork {
         string CID; //cid from ipfs
         uint256 price; //price of the artwork
@@ -15,6 +23,8 @@ contract ArtPlatform is Ownable, ERC721 {
         bool isAuctioned;
         uint256 auctionEndTime;
     }
+    mapping(address => User) public userDetails;
+    address[] users;
 
     Artwork[] public artworks;
     mapping(uint256 => address[]) public certificatesOfArtwork;
@@ -22,7 +32,9 @@ contract ArtPlatform is Ownable, ERC721 {
     mapping(uint256 => uint256) public artworkSupply;
     mapping(uint256 => uint256) public artworkBids;
     uint256 public artworkCounter;
-    address[] public verifiers;
+    // address[] public verifiers;
+
+    
 
     event ArtworkAdded(uint256 indexed artworkId);
     event ArtworkUpdated(uint256 indexed artworkId);
@@ -73,30 +85,28 @@ contract ArtPlatform is Ownable, ERC721 {
         return artworkBids[tokenId];
     }
 
-    function getArtworkCounter() public view returns (uint256) {
+    function getArtworkCount() public view returns (uint256) {
         return artworkCounter;
     }
 
-    function getVerifiers() public view returns (address[] memory) {
-        return verifiers;
-    }
+   
 
 
     function isVerifier(address _address) public view returns (bool) {
         // check if the address belongs to a registered verifier
-        for (uint i = 0; i < verifiers.length; i++) {
-            if (verifiers[i] == _address) {
-                return true;
-            }
-        }
-        return false;
+        return userDetails[_address]._type == UserType.VERIFIER;
     }
 
-    function registerVerifier() public view{
+    function registerVerifier(string memory _name, string memory _image) public {
         // Registration logic for verifiers
         // Add your implementation here
         require(!isVerifier(msg.sender), "Already a verifier");
-        verifiers.push(msg.sender);
+        userDetails[msg.sender] = User(
+            _name,
+            _image,
+             UserType.VERIFIER
+        );
+        // emit an event that id has become a verifier.
     }
 
     function addArtwork(
@@ -135,7 +145,6 @@ contract ArtPlatform is Ownable, ERC721 {
     ) external onlyArtworkOwner(_artworkId) {
         Artwork storage artwork = artworks[_artworkId];
         require(!artwork.isAuctioned, "Artwork is already auctioned");
-
         artwork.isAuctioned = true;
         artwork.auctionEndTime = _auctionEndTime;
 
