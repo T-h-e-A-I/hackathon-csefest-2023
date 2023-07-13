@@ -92,7 +92,7 @@ contract ArtPlatform is Ownable, ERC721 {
         return false;
     }
 
-    function registerVerifier() external {
+    function registerVerifier() public view{
         // Registration logic for verifiers
         // Add your implementation here
         require(!isVerifier(msg.sender), "Already a verifier");
