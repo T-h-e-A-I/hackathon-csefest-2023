@@ -1,94 +1,135 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract ArtworkMarketplace {
+// Import OpenZeppelin libraries for access control and token management
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract ArtPlatform is Ownable, ERC721 {
     struct Artwork {
-        uint256 tokenId; // Unique identifier for the artwork
-        string description; // Description of the artwork
-        string image; // Image URL or IPFS hash of the artwork
-        uint256 price; // Price of the artwork
-        string artistCredentials; // Credentials or information about the artist
-        address seller; // Address of the seller
-        bool isVerified; // Flag indicating if the artwork is verified
+        string CID;
+        uint256 price;
+        uint256 quantity;
+        bool isLimitedEdition;
+        bool isAuctioned;
+        uint256 auctionEndTime;
     }
-    
-    mapping(uint256 => Artwork) public artworks; // Mapping to store the artworks
-    uint256 public totalArtworks; // Counter for the total number of artworks
-    
-    event ArtworkListed(uint256 indexed tokenId, address indexed seller, uint256 price); // Event emitted when an artwork is listed
-    event ArtworkSold(uint256 indexed tokenId, address indexed buyer, uint256 price); // Event emitted when an artwork is sold
-    event ArtworkVerified(uint256 indexed tokenId, bool isVerified); // Event emitted when an artwork is verified
-    
-    modifier onlySeller(uint256 tokenId) {
-        require(msg.sender == artworks[tokenId].seller, "Only the seller can perform this action");
+    struct Certificates{
+        string provider;
+        address providerAddress;
+    }
+    Artwork[] public artworks;
+    mapping (string => Certificates) public CertificatesOfArtwork;
+    mapping(uint256 => address) public artworkOwners;
+    mapping(uint256 => uint256) public artworkSupply;
+    mapping(uint256 => uint256) public artworkBids;
+    address[] public verifiers;
+    // uint256 public nativeTokenRate;
+    // IERC20 public nativeToken;
+
+    event ArtworkAdded(uint256 indexed artworkId);
+    event ArtworkUpdated(uint256 indexed artworkId);
+    event ArtworkDeliveryStatusUpdated(uint256 indexed artworkId);
+    event ArtworkAuctionStarted(uint256 indexed artworkId, uint256 auctionEndTime);
+    event ArtworkBidPlaced(uint256 indexed artworkId, address indexed bidder, uint256 amount);
+    event ArtworkCertificateIssued(uint256 indexed artworkId, address indexed verifier);
+    event NativeTokenRateUpdated(uint256 newRate);
+
+    constructor() ERC721("ArtPlatform", "ART") {
+        // nativeToken = IERC20(_nativeTokenAddress);
+        // nativeTokenRate = 1; // Default rate, can be updated by the owner
+        
+    }
+
+    modifier onlyArtworkOwner(uint256 _artworkId) {
+        require(msg.sender == artworkOwners[_artworkId], "Only artwork owner can perform this action");
         _;
     }
-    
-    modifier onlyBuyer(uint256 tokenId) {
-        require(msg.sender != artworks[tokenId].seller, "Only the buyer can perform this action");
+
+    modifier onlyVerifier() {
+        require(isVerifier(msg.sender), "Only verifiers can perform this action");
         _;
     }
-    
-    /**
-     * @dev Function to list an artwork for sale
-     * @param _description Description of the artwork
-     * @param _image Image URL or IPFS hash of the artwork
-     * @param _price Price of the artwork
-     * @param _artistCredentials Credentials or information about the artist
-     */
-    function listArtwork(
-        string memory _description,
-        string memory _image,
+
+    function isVerifier(address _address) public view returns (bool) {
+        // Add your verification logic here
+        // e.g., check if the address belongs to a registered verifier
+        for(uint i = 0; i<verifiers.length;i++){
+            if(verifiers[i]== _address){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function registerVerifier() external {
+        // Registration logic for verifiers
+        // Add your implementation here
+        require(!isVerifier(msg.sender), "Already a verifier");
+        verifiers.push(msg.sender);
+    }
+
+    function addArtwork(
+        string memory _CID,
         uint256 _price,
-        string memory _artistCredentials
-    ) public {
-        totalArtworks++;
-        
-        Artwork memory newArtwork = Artwork(
-            totalArtworks,
-            _description,
-            _image,
-            _price,
-            _artistCredentials,
-            msg.sender,
-            false
-        );
-        
-        artworks[totalArtworks] = newArtwork;
-        
-        emit ArtworkListed(totalArtworks, msg.sender, _price);
+        uint256 _quantity,
+        bool _isLimitedEdition,
+        bool _isAuctioned,
+        uint256 _auctionEndTime
+    ) external onlyOwner {
+        uint256 artworkId = artworks.length;
+        artworks.push(Artwork({
+            CID: _CID,
+            price: _price,
+            quantity: _quantity,
+            isLimitedEdition: _isLimitedEdition,
+            isAuctioned: _isAuctioned,
+            auctionEndTime: _auctionEndTime
+        }));
+        artworkOwners[artworkId] = msg.sender;
+        artworkSupply[artworkId] = _quantity;
+
+        emit ArtworkAdded(artworkId);
     }
+
     
-    /**
-     * @dev Function to buy an artwork
-     * @param tokenId Unique identifier of the artwork
-     */
-    function buyArtwork(uint256 tokenId) public payable onlyBuyer(tokenId) {
-        Artwork storage artwork = artworks[tokenId];
-        
-        require(artwork.price == msg.value, "Incorrect payment amount");
-        require(!artwork.isVerified, "Artwork is already verified");
-        
-        address payable seller = payable(artwork.seller);
-        seller.transfer(msg.value);
-        
-        artwork.isVerified = true;
-        
-        emit ArtworkSold(tokenId, msg.sender, msg.value);
-        emit ArtworkVerified(tokenId, true);
+
+    function startArtworkAuction(uint256 _artworkId, uint256 _auctionEndTime) external onlyArtworkOwner(_artworkId) {
+        Artwork storage artwork = artworks[_artworkId];
+        require(!artwork.isAuctioned, "Artwork is already auctioned");
+
+        artwork.isAuctioned = true;
+        artwork.auctionEndTime = _auctionEndTime;
+
+        emit ArtworkAuctionStarted(_artworkId, _auctionEndTime);
     }
-    
-    /**
-     * @dev Function to verify an artwork
-     * @param tokenId Unique identifier of the artwork
-     */
-    function verifyArtwork(uint256 tokenId) public onlySeller(tokenId) {
-        Artwork storage artwork = artworks[tokenId];
+
+    function placeBid(uint256 _artworkId, uint256 _amount) external {
+        Artwork storage artwork = artworks[_artworkId];
+
+        require(artwork.isAuctioned, "Artwork is not available for auction");
+        require(block.timestamp < artwork.auctionEndTime, "Auction has ended");
+        require(_amount > artworkBids[_artworkId], "A higher bid already exists");
         
-        require(!artwork.isVerified, "Artwork is already verified");
-        
-        artwork.isVerified = true;
-        
-        emit ArtworkVerified(tokenId, true);
+        artworkBids[_artworkId] = _amount;
+
+        emit ArtworkBidPlaced(_artworkId, msg.sender, _amount);
     }
+
+    function issueCertificate(uint256 _artworkId) external onlyVerifier {
+        
+        
+
+        // artworkCertified[_artworkId] = true;
+
+        // emit ArtworkCertificateIssued(_artworkId, msg.sender);
+    }
+
+    // function setNativeTokenRate(uint256 _rate) external onlyOwner {
+    //     nativeTokenRate = _rate;
+
+    //     emit NativeTokenRateUpdated(_rate);
+    // }
+
 }
